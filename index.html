@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DataOpsify.com - Domain for Sale</title>
+
+  <!-- Prism.js for syntax highlighting -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+
   <style>
     body {
       margin: 0;
@@ -22,7 +28,7 @@
     }
     .card {
       background-color: #fff;
-      max-width: 600px;
+      max-width: 800px;
       margin: 2rem auto;
       padding: 2rem;
       border-radius: 10px;
@@ -40,6 +46,26 @@
       background-color: #eee;
       color: #777;
     }
+    pre {
+      text-align: left;
+      padding: 1rem;
+      border-radius: 8px;
+      background: #2d2d2d;
+      overflow-x: auto;
+      position: relative;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 5px 10px;
+      background: #0077cc;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
   </style>
 </head>
 <body>
@@ -52,7 +78,162 @@
     <div class="card">
       <h2>Perfect for a DataOps, Cloud, or AI Startup</h2>
       <p>Memorable. Brandable. Ready to launch.</p>
-      
+
+      <h3>Sample Code Snippet</h3>
+      <div style="position: relative;">
+        <button class="copy-btn" onclick="copyCode()">Copy</button>
+        <pre><code class="language-python" id="code-block">
+# serializers.py
+from rest_framework import serializers
+from .models import User, Role, Ticket
+from rest_framework import fields
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'userName', 'email']
+
+
+class TicketSerializer(serializers.ModelSerializer):
+    createdAt = serializers.DateTimeField(format="%Y-%m-%d")  # Ensure correct date format
+
+    class Meta:
+        model = Ticket
+        fields = '__all__'
+
+
+# views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from django.contrib.auth.hashers import check_password
+from django.shortcuts import get_object_or_404
+from .models import User, Ticket
+from .serializers import UserSerializer, TicketSerializer
+from rest_framework.exceptions import ValidationError  # Import ValidationError
+
+
+from rest_framework_simplejwt.tokens import RefreshToken
+
+
+class LoginView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+        password = request.data.get('password')
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({"msg": "incorrect email or password"}, status=400)  # Changed "message" to "msg"
+
+        # Use check_password to verify the password
+        if not check_password(password, user.password):
+            return Response({"msg": "incorrect email or password"}, status=400)  # Changed "message" to "msg"
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "username": user.userName,
+            "token": str(refresh.access_token)
+        }, status=201)
+
+
+class TicketListView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        status = request.query_params.get("ticketStatus")
+        if not status:
+            return Response({"msg": "ticket status needs to filter data"}, status=400)  # Changed "message" to "msg"
+
+        tickets = Ticket.objects.filter(ticketStatus=status)
+        serializer = TicketSerializer(tickets, many=True)
+        return Response(serializer.data, status=200)
+
+
+
+class TicketAddView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if user.roleObj.roleName != "client":
+            return Response({"msg": "you don't have permission to perform this operation"},
+                            status=403)  # Changed "message" to "msg"
+
+        ticketId = request.data.get("ticketId")
+        if Ticket.objects.filter(ticketId=ticketId).exists():
+            return Response({"msg": "ticketId already exists"}, status=400)  # Changed "message" to "msg"
+
+        data = request.data.copy()
+        data["clientObj"] = user.id
+        serializer = TicketSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            #  Populate the response with all the fields.
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class TicketUpdateView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, id):
+        user = request.user
+        if user.roleObj.roleName != "admin":
+            return Response({"msg": "you don't have permission to perform this operation"},
+                            status=403)  # Changed "message" to "msg"
+
+        ticket = Ticket.objects.filter(id=id).first()
+        if not ticket:
+            return Response({"msg": "ticket object not found"}, status=404)  # Changed "message" to "msg"
+
+        ticketStatus = request.data.get("ticketStatus")
+        if not ticketStatus:
+            return Response({"msg": "no data provided to update"}, status=400)  # Changed "message" to "msg"
+
+        ticket.ticketStatus = ticketStatus
+        ticket.save()
+        serializer = TicketSerializer(ticket)
+        return Response(serializer.data, status=200)
+
+
+class TicketDeleteView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, id):
+        user = request.user
+        ticket = Ticket.objects.filter(id=id).first()
+        if not ticket:
+            return Response({"msg": "ticket object not found"}, status=404)  # Changed "message" to "msg"
+
+        if user.roleObj.roleName != "client" or ticket.clientObj.id != user.id:
+            return Response({"msg": "you don't have permission to perform this operation"},
+                            status=403)  # Changed "message" to "msg"
+
+        ticket.delete()
+        return Response(status=204)
+
+
+# urls.py
+from django.urls import path
+from .views import LoginView, TicketListView, TicketAddView, TicketUpdateView, TicketDeleteView
+
+urlpatterns = [
+    path('user/login', LoginView.as_view()),
+    path('ticket/list', TicketListView.as_view()),
+    path('ticket/add', TicketAddView.as_view()),
+    path('ticket/update/<int:id>', TicketUpdateView.as_view()),
+    path('ticket/delete/<int:id>', TicketDeleteView.as_view()),
+]
+        </code></pre>
+      </div>
+
       <div class="contact-info">
         Contact: meeranisonline@gmail.com
       </div>
@@ -62,5 +243,14 @@
   <footer>
     <p>© 2025 DataOpsify.com</p>
   </footer>
+
+  <script>
+    function copyCode() {
+      const code = document.getElementById('code-block').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        alert('Code copied to clipboard!');
+      });
+    }
+  </script>
 </body>
 </html>
